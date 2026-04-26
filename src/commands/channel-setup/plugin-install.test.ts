@@ -99,6 +99,7 @@ import fs from "node:fs";
 import type { ChannelPluginCatalogEntry } from "../../channels/plugins/catalog.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { loadOpenClawPlugins } from "../../plugins/loader.js";
+import type { PluginManifestRecord } from "../../plugins/manifest-registry.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry.js";
 import {
   pinActivePluginChannelRegistry,
@@ -165,17 +166,38 @@ function mockActivationOnlyPlugin(plugin: {
 }) {
   loadPluginManifestRegistry.mockReturnValue({
     plugins: [
-      {
+      createManifestRecord({
         id: plugin.id,
         channels: [],
         ...(plugin.origin === undefined ? {} : { origin: plugin.origin }),
         activation: {
           onChannels: ["external-chat"],
         },
-      },
+      }),
     ],
     diagnostics: [],
   });
+}
+
+function createManifestRecord(
+  overrides: Partial<PluginManifestRecord> & Pick<PluginManifestRecord, "id">,
+): PluginManifestRecord {
+  const { id, ...rest } = overrides;
+  return {
+    id,
+    channels: [],
+    providers: [],
+    cliBackends: [],
+    syntheticAuthRefs: [],
+    nonSecretAuthMarkers: [],
+    skills: [],
+    hooks: [],
+    origin: "bundled",
+    rootDir: `/tmp/openclaw-test/${id}`,
+    source: `/tmp/openclaw-test/${id}/index.ts`,
+    manifestPath: `/tmp/openclaw-test/${id}/openclaw.plugin.json`,
+    ...rest,
+  };
 }
 
 function expectSetupSnapshotDoesNotScopeToPlugin(params: {
@@ -195,10 +217,10 @@ function expectSetupSnapshotDoesNotScopeToPlugin(params: {
       onlyPluginIds: [params.pluginId],
     }),
   );
-  expect(
-    (vi.mocked(loadOpenClawPlugins).mock.calls[0]?.[0] as { onlyPluginIds?: string[] })
-      .onlyPluginIds,
-  ).toBeUndefined();
+  const firstLoadCall = vi.mocked(loadOpenClawPlugins).mock.calls[0]?.[0] as
+    | { onlyPluginIds?: string[] }
+    | undefined;
+  expect(firstLoadCall?.onlyPluginIds).toBeUndefined();
 }
 
 beforeEach(() => {
@@ -746,7 +768,12 @@ describe("ensureChannelSetupPluginInstalled", () => {
     const runtime = makeRuntime();
     const cfg: OpenClawConfig = {};
     loadPluginManifestRegistry.mockReturnValue({
-      plugins: [{ id: "custom-external-chat-plugin", channels: ["external-chat"] }],
+      plugins: [
+        createManifestRecord({
+          id: "custom-external-chat-plugin",
+          channels: ["external-chat"],
+        }),
+      ],
       diagnostics: [],
     });
 
